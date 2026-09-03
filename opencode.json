@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "workos": {
+      "type": "remote",
+      "url": "https://mcp.workos.com/mcp",
+      "enabled": true
+    }
+  }
+}
