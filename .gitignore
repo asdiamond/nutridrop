@@ -5,3 +5,11 @@ xcuserdata/
 # Xcode build output
 DerivedData/
 build/
+
+# JavaScript and Cloudflare development output
+node_modules/
+.wrangler/
+.dev.vars*
+dist/
+coverage/
+*.cpuprofile

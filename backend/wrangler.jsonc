@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nutridrop-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    }
+  },
+  "vars": {
+    "MCP_RESOURCE": "http://localhost:8787/mcp",
+    "WORKOS_ISSUER": "https://resilient-quest-95-staging.authkit.app"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nutridrop-db-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "nutridrop-mcp-staging",
+      "vars": {
+        "MCP_RESOURCE": "https://nutridrop-mcp-staging.diamondaleksandr.workers.dev/mcp",
+        "WORKOS_ISSUER": "https://resilient-quest-95-staging.authkit.app"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "nutridrop-db-staging",
+          "database_id": "8259e288-fee2-444c-b328-d4d925a391bb",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
+}
