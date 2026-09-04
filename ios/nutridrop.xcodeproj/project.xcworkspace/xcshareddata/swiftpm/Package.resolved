@@ -1,0 +1,15 @@
+{
+  "originHash" : "a17b5afa8c21c811fb98cf0020678e1d434d132b9ff5ee5a183ed6133bcca3d8",
+  "pins" : [
+    {
+      "identity" : "workos-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/workos/workos-ios",
+      "state" : {
+        "revision" : "7f2b973df23d115bfaed9ed06644180363f2b0bd",
+        "version" : "0.6.0"
+      }
+    }
+  ],
+  "version" : 3
+}

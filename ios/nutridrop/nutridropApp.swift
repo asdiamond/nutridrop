@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct nutridropApp: App {
+    @State private var authSession = AuthSession()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(authSession: authSession)
         }
     }
 }

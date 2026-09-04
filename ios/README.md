@@ -15,9 +15,29 @@ ios/
 ├── nutridrop.xcodeproj/
 └── nutridrop/
     ├── Assets.xcassets/
+    ├── AuthSession.swift
     ├── ContentView.swift
+    ├── Info.plist
     └── nutridropApp.swift
 ```
+
+## WorkOS AuthKit
+
+The app uses the official WorkOS iOS SDK as a public OAuth client. Sign-in opens
+the WorkOS-hosted AuthKit page in `ASWebAuthenticationSession`, validates the
+OAuth state, and exchanges the authorization code with PKCE. No API key or
+backend is involved.
+
+- Environment: Staging
+- Application: `Nutridrop iOS`
+- Client ID: `client_01M1M5XYKEKDP98RTMBQKMXC1H`
+- Redirect URI: `app.nutridrop://auth/callback`
+- Swift package: `https://github.com/workos/workos-ios`, version `0.6.0`
+
+The WorkOS user and session tokens are stored together in an
+`AfterFirstUnlockThisDeviceOnly` Keychain item. Signing out deletes this local
+item. Token refresh and remote session revocation will be added when the app
+starts making authenticated backend requests.
 
 ## Current Apple Configuration
 
