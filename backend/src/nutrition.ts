@@ -1,30 +1,19 @@
 import { z } from "zod";
+import nutrients from "./nutrients.json";
 
-const nutrientUnits = {
-  energy: ["kcal", "kJ"],
-  protein: ["g"],
-  carbohydrates: ["g"],
-  total_fat: ["g"],
-  saturated_fat: ["g"],
-  fiber: ["g"],
-  sugar: ["g"],
-  sodium: ["mg", "g"],
-  cholesterol: ["mg", "g"],
-  potassium: ["mg", "g"],
-  caffeine: ["mg", "g"],
-} as const;
-
-const nutrientSchema = z.enum(Object.keys(nutrientUnits) as [keyof typeof nutrientUnits]);
+const nutrientSchema = z.enum(Object.keys(nutrients) as [keyof typeof nutrients])
+  .describe("HealthKit dietary quantities. Thiamin=B1, riboflavin=B2, niacin=B3, pantothenic_acid=B5, biotin=B7, folate=B9. Only record explicit amounts; do not infer missing values or derive totals from subtypes.");
 
 const quantitySchema = z
   .object({
     nutrient: nutrientSchema,
     value: z.number().finite().positive().max(1_000_000),
-    unit: z.enum(["g", "mg", "kcal", "kJ"]),
+    unit: z.enum(["g", "mg", "mcg", "kcal", "kJ", "mL", "L"])
+      .describe("Energy: kcal or kJ. Water: mL or L. Protein/carbohydrates/fats/fiber/sugar: g. Cholesterol/sodium/potassium/caffeine: mg or g. Vitamins and other minerals: mcg, mg or g. mcg means micrograms. Do not supply IU, percent daily value, or infer missing quantities."),
   })
   .strict()
   .superRefine((quantity, context) => {
-    const allowedUnits: readonly string[] = nutrientUnits[quantity.nutrient];
+    const allowedUnits = nutrients[quantity.nutrient].units;
     if (!allowedUnits.includes(quantity.unit)) {
       context.addIssue({
         code: "custom",
@@ -38,7 +27,7 @@ export const nutritionInputSchema = z
   .object({
     consumed_at: z.iso.datetime({ offset: true }),
     meal_label: z.string().trim().min(1).max(120).optional(),
-    quantities: z.array(quantitySchema).min(1).max(32),
+    quantities: z.array(quantitySchema).min(1).max(Object.keys(nutrients).length),
   })
   .strict()
   .superRefine((input, context) => {

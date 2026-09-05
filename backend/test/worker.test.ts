@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { createExecutionContext } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorker } from "../src";
+import fullRecord from "./fixtures/all-nutrients.json";
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 afterEach(() => vi.restoreAllMocks());
@@ -95,6 +96,7 @@ describe("MCP Worker", () => {
         nutrition_data TEXT NOT NULL CHECK (json_valid(nutrition_data)),
         schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version = 1),
         created_at TEXT NOT NULL,
+        healthkit_acknowledged_at TEXT,
         UNIQUE (workos_user_id, ingestion_id)
       ) STRICT`,
     ).run();
@@ -119,8 +121,9 @@ describe("MCP Worker", () => {
         params: {
           name: "record_nutrition",
           arguments: {
-            consumed_at: "2026-09-03T19:00:00-07:00",
-            quantities: [{ nutrient: "energy", value: 640, unit: "kcal" }],
+            consumed_at: fullRecord.consumedAt,
+            meal_label: fullRecord.mealLabel,
+            quantities: fullRecord.quantities,
           },
         },
       }),
@@ -142,5 +145,15 @@ describe("MCP Worker", () => {
     expect(body.result?.structuredContent?.notificationStatus).toBe(publishFails ? "enqueue_failed" : "queued");
     expect(send).toHaveBeenCalledExactlyOnceWith({ userId: "user_authenticated", recordId: body.result?.structuredContent?.recordId });
     expect(stored?.workos_user_id).toBe("user_authenticated");
+    const pending = await worker.fetch(new IncomingRequest("http://localhost:8787/v1/nutrition/pending"), env, createExecutionContext());
+    const page = await pending.json<{ records: unknown[] }>();
+    expect(page.records).toEqual([{ ...fullRecord, id: body.result?.structuredContent?.recordId, createdAt: expect.any(String) }]);
+    const acknowledged = await worker.fetch(new IncomingRequest("http://localhost:8787/v1/nutrition/acknowledge", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recordIds: [body.result?.structuredContent?.recordId] }),
+    }), env, createExecutionContext());
+    expect(acknowledged.status).toBe(200);
+    const remaining = await worker.fetch(new IncomingRequest("http://localhost:8787/v1/nutrition/pending"), env, createExecutionContext());
+    expect(await remaining.json()).toEqual({ records: [], nextCursor: null });
   });
 });

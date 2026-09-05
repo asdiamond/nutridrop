@@ -3,6 +3,11 @@
 Cloudflare Worker exposing the authenticated `record_nutrition` MCP tool and
 persisting accepted nutrition records to D1.
 
+All 39 HealthKit dietary quantities are exposed by `record_nutrition`. See
+[the complete nutrient/unit catalog](../NUTRIENTS.md). Each record supports up
+to 39 distinct quantities, including vitamins/minerals in `mcg`, `mg`, or `g`
+and water in `mL` or `L`. Existing nutrient names and units remain valid.
+
 `GET /v1/session` returns `{ "userId": "user_..." }`. Both routes use the same
 WorkOS Connect verifier, issuer, resource audience, and `openid` scope. iOS uses
 a public Connect client with PKCE; MCP clients discover the authorization server

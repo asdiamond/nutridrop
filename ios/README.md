@@ -193,7 +193,11 @@ acknowledged to the server. Acknowledgements are idempotent and retried separate
 Tap **Enable Apple Health** while the app is open. This enables writes for all
 existing pending records and future records in that WorkOS account, including
 any test meals already saved. It requests only sharing/write permissions for
-the 11 supported dietary types, not permission to read existing Health data.
+all 39 public dietary quantity types, not permission to read existing Health data.
+The full list of nutrients, MCP names, and units is in [NUTRIENTS.md](../NUTRIENTS.md).
+After updating from the 11-type version, tap **Review Health permissions** to
+authorize newly added types, then **Sync now**. Existing saved Health samples
+and their sync identifiers are unchanged.
 Completing the permission sheet does not imply that permission was granted;
 each record is checked for all required write permissions before saving.
 Change previously denied permissions in the Health app's access settings.

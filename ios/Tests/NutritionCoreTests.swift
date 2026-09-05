@@ -18,11 +18,51 @@ private func record(_ quantities: [NutritionRecord.Quantity], id: String = UUID(
             #expect(samples[0].quantityType.identifier == identifier.rawValue)
             #expect(samples[0].startDate == input.consumptionDate)
             #expect(samples[0].endDate == input.consumptionDate)
-            let target: HKUnit = nutrient == "energy" ? .kilocalorie() : .gram()
-            let expected = unit == "mg" ? 0.002 : unit == "kJ" ? 2 / 4.184 : 2
-            #expect(abs(samples[0].quantity.doubleValue(for: target) - expected) < 0.000001)
+            let target: HKUnit = nutrient == "energy" ? .kilocalorie() : nutrient == "water" ? .liter() : .gram()
+            let expected: Double
+            switch unit {
+            case "mcg": expected = 0.000002
+            case "mg", "mL": expected = 0.002
+            case "kJ": expected = 2 / 4.184
+            default: expected = 2
+            }
+            #expect(abs(samples[0].quantity.doubleValue(for: target) - expected) < 0.000000001)
         }
     }
+}
+
+@Test func healthKitMappingMatchesTheEntireMcpCatalog() throws {
+    struct Definition: Decodable {
+        let healthKitIdentifier: String
+        let units: Set<String>
+    }
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../backend")
+    let catalog = try JSONDecoder().decode([String: Definition].self,
+        from: Data(contentsOf: root.appending(path: "src/nutrients.json")))
+    #expect(catalog.count == 39)
+    #expect(Set(catalog.keys) == Set(HealthKitClient.nutrients.keys))
+    for (name, definition) in catalog {
+        let mapping = try #require(HealthKitClient.nutrients[name])
+        #expect(mapping.0.rawValue == definition.healthKitIdentifier)
+        #expect(mapping.1 == definition.units)
+    }
+}
+
+@Test func fullWireRecordPersistsAndBuildsAll39HealthSamples() async throws {
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appending(path: "../../backend/test/fixtures/all-nutrients.json")
+    let input = try JSONDecoder().decode(NutritionRecord.self, from: Data(contentsOf: fixture))
+    let directory = FileManager.default.temporaryDirectory.appending(path: "nutridrop-catalog-test-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = NutritionStore(directory: directory)
+    _ = try await store.merge(.init(records: [input], nextCursor: nil), userID: "user_test")
+    let reopened = NutritionStore(directory: directory)
+    let saved = try #require(try await reopened.load(userID: "user_test").records.first)
+    #expect(saved == input)
+    let samples = try HealthKitClient.samples(for: saved, userID: "user_test")
+    #expect(samples.count == 39)
+    #expect(Set(samples.compactMap { $0.metadata?[HKMetadataKeySyncIdentifier] as? String }).count == 39)
+    #expect(Set(samples.map { $0.quantityType.identifier }).count == 39)
 }
 
 @Test func retryIdentifiersAreStableAndDistinct() throws {

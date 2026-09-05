@@ -57,6 +57,11 @@ accepts a food description in place of quantities or estimates missing values.
 The result confirms persistence for future iPhone sync; it does not claim that
 Apple Health was updated.
 
+All 39 public HealthKit dietary quantity types are supported. The complete list,
+wire names and units are documented in [NUTRIENTS.md](NUTRIENTS.md). Each record
+may contain all 39 types. Cross-language tests keep MCP validation and the iOS
+HealthKit mapping aligned, including micrograms and water-volume conversions.
+
 ## Authentication
 
 WorkOS Connect is the single authorization system for iOS and MCP clients.
