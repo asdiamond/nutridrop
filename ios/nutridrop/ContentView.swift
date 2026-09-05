@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import WorkOS
 
 struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -41,7 +40,7 @@ struct ContentView: View {
                 }
 
                 if let user = authSession.user {
-                    signedInCard(name: user.name, email: user.email)
+                    signedInCard(userID: user.userId)
                 } else {
                     signInCard
                 }
@@ -54,7 +53,7 @@ struct ContentView: View {
             .padding(24)
         }
         .alert(
-            "Couldn't Sign In",
+            "Authentication Error",
             isPresented: Binding(
                 get: { authSession.errorMessage != nil },
                 set: { if !$0 { authSession.errorMessage = nil } }
@@ -63,6 +62,11 @@ struct ContentView: View {
             Button("OK", role: .cancel) { authSession.errorMessage = nil }
         } message: {
             Text(authSession.errorMessage ?? "Please try again.")
+        }
+        .task(id: authSession.isAuthenticated) {
+            if authSession.isAuthenticated {
+                await authSession.verifyBackendSession()
+            }
         }
     }
 
@@ -86,20 +90,19 @@ struct ContentView: View {
         .disabled(authSession.isLoading)
     }
 
-    private func signedInCard(name: String?, email: String) -> some View {
+    private func signedInCard(userID: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 34))
                 .foregroundStyle(.green)
 
-            VStack(spacing: 4) {
-                if let name, !name.isEmpty {
-                    Text(name)
-                        .font(.title3.bold())
-                }
-                Text(email)
-                    .foregroundStyle(.secondary)
-            }
+            Text(userID)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            backendConnectionStatus
+
 
             Button("Sign out", role: .destructive, action: authSession.signOut)
                 .buttonStyle(.bordered)
@@ -107,6 +110,33 @@ struct ContentView: View {
         .frame(maxWidth: .infinity)
         .padding(22)
         .background(.regularMaterial, in: .rect(cornerRadius: 22))
+    }
+
+    @ViewBuilder
+    private var backendConnectionStatus: some View {
+        switch authSession.backendConnectionState {
+        case .idle, .checking:
+            Label("Checking backend connection...", systemImage: "arrow.trianglehead.2.clockwise")
+                .foregroundStyle(.secondary)
+        case .connected:
+            Label("Backend connected", systemImage: "checkmark.shield.fill")
+                .foregroundStyle(.green)
+        case .failed:
+            VStack(spacing: 8) {
+                Label("Backend connection failed", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                if let message = authSession.backendErrorMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                Button("Retry") {
+                    Task { await authSession.verifyBackendSession() }
+                }
+                .buttonStyle(.bordered)
+            }
+        }
     }
 }
 

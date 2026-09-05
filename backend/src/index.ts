@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
-import type { AuthInfo } from "@modelcontextprotocol/server";
-import { verifyWorkOSToken, type TokenVerifier } from "./auth";
+import { verifyAccessToken, type TokenVerifier } from "./auth";
 import {
   nutritionInputSchema,
   nutritionOutputSchema,
@@ -26,6 +25,7 @@ function unauthorized(env: Env): Response {
     {
       status: 401,
       headers: {
+        "Cache-Control": "no-store",
         "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl.href}", scope="openid"`,
       },
     },
@@ -140,8 +140,12 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
         return protectedResourceMetadata(env);
       }
 
-      if (url.pathname !== "/mcp") {
+      if (url.pathname !== "/mcp" && url.pathname !== "/v1/session") {
         return Response.json({ error: "not_found" }, { status: 404 });
+      }
+
+      if (url.pathname === "/v1/session" && request.method !== "GET") {
+        return new Response(null, { status: 405, headers: { Allow: "GET" } });
       }
 
       const user = await verifyToken(request, env);
@@ -149,19 +153,19 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
         return unauthorized(env);
       }
 
+      if (url.pathname === "/v1/session") {
+        return Response.json(
+          { userId: user.userId },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      }
+
       try {
         const parsedBody = request.method === "POST" ? await parseMcpBody(request) : undefined;
-        const authInfo: AuthInfo = {
-          token: user.token,
-          clientId: user.clientId,
-          scopes: user.scopes,
-          expiresAt: user.expiresAt,
-          extra: { subject: user.subject },
-        };
-        const handler = createMcpHandler(() => createServer(env, user.subject), {
+        const handler = createMcpHandler(() => createServer(env, user.userId), {
           route: "/mcp",
         });
-        return await handler.fetch(request, { authInfo, parsedBody });
+        return await handler.fetch(request, { parsedBody });
       } catch (error) {
         const tooLarge = error instanceof RangeError;
         console.error(
@@ -180,4 +184,4 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
   };
 }
 
-export default createWorker(verifyWorkOSToken) satisfies ExportedHandler<Env>;
+export default createWorker(verifyAccessToken) satisfies ExportedHandler<Env>;

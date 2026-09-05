@@ -41,6 +41,40 @@ describe("MCP Worker", () => {
     expect(response.status).toBe(404);
   });
 
+  it("rejects unauthenticated iOS session checks", async () => {
+    const worker = createWorker(async () => null);
+    const request = new IncomingRequest("http://example.com/v1/session");
+    const response = await worker.fetch(request, env, createExecutionContext());
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("returns the verified identity to the signed-in client", async () => {
+    const worker = createWorker(async () => ({
+      userId: "user_authenticated",
+    }));
+    const request = new IncomingRequest("http://example.com/v1/session", {
+      headers: { Authorization: "Bearer ios-test-token" },
+    });
+    const response = await worker.fetch(request, env, createExecutionContext());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toEqual({ userId: "user_authenticated" });
+  });
+
+  it("rejects unsupported session methods", async () => {
+    const worker = createWorker(async () => null);
+    const response = await worker.fetch(
+      new IncomingRequest("http://example.com/v1/session", { method: "POST" }),
+      env, createExecutionContext(),
+    );
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("GET");
+  });
+
   it("invokes record_nutrition and persists the authenticated user's record", async () => {
     await env.DB.exec("DROP TABLE IF EXISTS nutrition_records");
     await env.DB.prepare(
@@ -57,12 +91,11 @@ describe("MCP Worker", () => {
       ) STRICT`,
     ).run();
 
-    const worker = createWorker(async () => ({
-      subject: "user_authenticated",
-      clientId: "chatgpt-test-client",
-      scopes: ["openid"],
-      token: "test-token",
-    }));
+    const worker = createWorker(
+      async () => ({
+        userId: "user_authenticated",
+      }),
+    );
     const request = new IncomingRequest("http://localhost:8787/mcp", {
       method: "POST",
       headers: {

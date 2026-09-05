@@ -15,29 +15,37 @@ ios/
 ├── nutridrop.xcodeproj/
 └── nutridrop/
     ├── Assets.xcassets/
-    ├── AuthSession.swift
+    ├── APIClient.swift
+     ├── AuthSession.swift
+     ├── ConnectClient.swift
     ├── ContentView.swift
     ├── Info.plist
     └── nutridropApp.swift
 ```
 
-## WorkOS AuthKit
+## WorkOS Connect
 
-The app uses the official WorkOS iOS SDK as a public OAuth client. Sign-in opens
-the WorkOS-hosted AuthKit page in `ASWebAuthenticationSession`, validates the
-OAuth state, and exchanges the authorization code with PKCE. No API key or
-backend is involved.
+iOS and MCP clients use Connect OAuth access tokens for the same backend
+resource. iOS is a public, first-party application using Authorization Code
+with S256 PKCE. There is no client secret or WorkOS SDK dependency.
 
-- Environment: Staging
-- Application: `Nutridrop iOS`
-- Client ID: `client_01M1M5XYKEKDP98RTMBQKMXC1H`
-- Redirect URI: `app.nutridrop://auth/callback`
-- Swift package: `https://github.com/workos/workos-ios`, version `0.6.0`
+- Client ID: `client_01M1QJ50TXNKGVX06Q0CD98VPZ`
+- Issuer: `https://resilient-quest-95-staging.authkit.app`
+- Redirect: `app.nutridrop://auth/callback`
+- Explicit resource: `https://nutridrop-mcp-staging.diamondaleksandr.workers.dev/mcp`
+- Scopes: `openid offline_access`
 
-The WorkOS user and session tokens are stored together in an
-`AfterFirstUnlockThisDeviceOnly` Keychain item. Signing out deletes this local
-item. Token refresh and remote session revocation will be added when the app
-starts making authenticated backend requests.
+`ConnectClient.swift` builds the authorization URL and performs form-encoded
+code and refresh exchanges. `AuthSession.swift` opens `ASWebAuthenticationSession`,
+validates the callback and state, and stores tokens in one
+`AfterFirstUnlockThisDeviceOnly` Keychain item. Refresh requests are serialized;
+replacement refresh tokens are persisted before use.
+
+`APIClient.swift` calls `GET /v1/session` and receives `{ "userId": "user_..." }`
+from the backend's single Connect verifier. No MCP requests, profile requests,
+or ID-token parsing are needed in iOS. Access-token expiry is decoded locally
+only to schedule refresh 60 seconds before expiration. Signing out deletes the
+local session; it does not sign out the WorkOS browser session.
 
 ## Current Apple Configuration
 
@@ -51,10 +59,6 @@ starts making authenticated backend requests.
 - Current deployment target: iOS `26.2`
 - Xcode Cloud: not configured
 - TestFlight internal testing: configured and verified on a personal iPhone
-
-The architecture document describes iOS 18 as the intended minimum deployment
-target. The generated Xcode project currently requires iOS 26.2, so lower the
-deployment target before the app needs to support iOS 18 devices.
 
 ## Signing
 

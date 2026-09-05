@@ -3,6 +3,12 @@
 Cloudflare Worker exposing the authenticated `record_nutrition` MCP tool and
 persisting accepted nutrition records to D1.
 
+`GET /v1/session` returns `{ "userId": "user_..." }`. Both routes use the same
+WorkOS Connect verifier, issuer, resource audience, and `openid` scope. iOS uses
+a public Connect client with PKCE; MCP clients discover the authorization server
+through `/.well-known/oauth-protected-resource`. AuthKit session tokens are not
+accepted. Tokens and nutrition values must never be logged.
+
 ## Development
 
 ```sh

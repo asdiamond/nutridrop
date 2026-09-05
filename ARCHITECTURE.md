@@ -2,9 +2,9 @@
 
 ## Scope
 
-The first backend milestone accepts explicit nutrition quantities from ChatGPT
-and stores them durably. Delivery to the iPhone and Apple Health is a later
-milestone.
+The backend accepts explicit nutrition quantities from ChatGPT and stores them
+durably. The iOS app can authenticate to the same Worker; nutrition delivery
+and Apple Health synchronization are later milestones.
 
 The product is append-only. It does not infer nutrition values, edit existing
 records, delete HealthKit samples, or provide a browser dashboard.
@@ -29,7 +29,13 @@ POST /mcp
 GET  /.well-known/oauth-protected-resource
 ```
 
-There is no separate REST API Worker in this milestone.
+The same Worker also exposes the first authenticated iOS API route:
+
+```text
+GET /v1/session
+```
+
+There is no separate REST API Worker.
 
 The MCP server exposes one tool:
 
@@ -50,18 +56,27 @@ Apple Health was updated.
 
 ## Authentication
 
-WorkOS AuthKit is the shared identity provider for ChatGPT and iOS.
+WorkOS Connect is the single authorization system for iOS and MCP clients.
+Both use the same environment, issuer, signing keys, and resource audience.
+iOS uses its own public Connect client with S256 PKCE; generic MCP clients use
+their own OAuth registrations. Neither client sends an ID token to the API.
+
+One `verifyAccessToken` function gates `/mcp` and `/v1/session`, returning only
+`{ userId }` from the verified `sub`. The session endpoint returns that identity
+to iOS. Nutrition storage uses it as `workos_user_id`, regardless of client.
+There is no AuthKit-session-token verifier, token exchange bridge, or fallback.
 
 The MCP Worker publishes OAuth protected-resource metadata pointing to the
 WorkOS authorization server. WorkOS uses OAuth Authorization Code with PKCE
 and Client ID Metadata Documents for ChatGPT. The staging `/mcp` URL is the
 default WorkOS resource indicator.
 
-On every MCP request the Worker:
+On every authenticated API or MCP request the Worker:
 
 1. Reads the bearer access token.
 2. Verifies its signature against the WorkOS JWKS.
-3. Verifies issuer, MCP audience, expiry, and the `openid` scope.
+3. Requires RS256, the configured issuer/resource audience, expiry, issued-at,
+   a user subject, and the `openid` scope.
 4. Derives the database identity exclusively from the verified `sub` claim.
 
 The client never provides a user ID as tool input.
@@ -98,7 +113,6 @@ or querying requirements justify normalized tables.
 
 ## Deferred Work
 
-- Public iOS API and access-token refresh.
 - Device registration and active-writer selection.
 - Normalized quantity and delivery tables.
 - Foreground and background iPhone synchronization.
