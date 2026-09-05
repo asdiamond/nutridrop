@@ -11,9 +11,14 @@
     }
   },
   "vars": {
+    "APNS_KEY_ID": "N3PN5DQTL5",
+    "APNS_TEAM_ID": "Z9369NJFAQ",
+    "APNS_TOPIC": "app.nutridrop",
+    "APNS_ENVIRONMENT": "sandbox",
     "MCP_RESOURCE": "http://localhost:8787/mcp",
     "WORKOS_ISSUER": "https://resilient-quest-95-staging.authkit.app"
   },
+  "secrets": { "required": ["APNS_PRIVATE_KEY"] },
   "d1_databases": [
     {
       "binding": "DB",
@@ -26,9 +31,14 @@
     "staging": {
       "name": "nutridrop-mcp-staging",
       "vars": {
+        "APNS_KEY_ID": "N3PN5DQTL5",
+        "APNS_TEAM_ID": "Z9369NJFAQ",
+        "APNS_TOPIC": "app.nutridrop",
+        "APNS_ENVIRONMENT": "sandbox",
         "MCP_RESOURCE": "https://nutridrop-mcp-staging.diamondaleksandr.workers.dev/mcp",
         "WORKOS_ISSUER": "https://resilient-quest-95-staging.authkit.app"
       },
+      "secrets": { "required": ["APNS_PRIVATE_KEY"] },
       "d1_databases": [
         {
           "binding": "DB",

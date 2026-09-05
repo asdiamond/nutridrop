@@ -159,15 +159,38 @@ number twice is rejected.
 
 ## Capabilities
 
-No special Apple capabilities are enabled yet. The planned app will eventually
-need at least:
+Push Notifications is enabled in Xcode. Debug signs with the development APNs
+entitlement and uploads `sandbox`; Release signs with production and uploads
+`production`. Enable Push Notifications for `app.nutridrop` in the Apple developer
+portal and regenerate the manual `dist-2` distribution profile before TestFlight.
+Remote Notifications background mode is enabled. The notification callback
+stores only the last received record ID and receipt time, scoped to the signed-in
+user, and displays them in the app. HealthKit writes and record fetching are not
+implemented yet.
 
-- HealthKit for writing nutrition data to Apple Health.
-- Push Notifications for background synchronization hints.
+The app registers with APNs on launch/foreground and after authenticated backend
+verification. APNs callbacks upload the current token through authenticated
+`PUT /v1/push-token`. The token is held in memory, not persisted in the app.
+Registration errors appear on the signed-in screen with a retry button.
+No alert permission prompt is needed just to register for silent pushes.
 
-Enable capabilities in both the Apple developer identifier and Xcode when they
-are implemented. After changing entitlements, regenerate and download the App
-Store provisioning profile so it contains the same capabilities.
+One destination is stored per WorkOS user. The latest successful registration
+replaces the prior phone. A token moving to another account is reassigned
+atomically. Sign-out makes a best-effort conditional DELETE; offline sign-out
+cannot guarantee server-side removal. Future pushes must be data-free wake-up
+hints, and all data retrieval must still require authentication.
+
+APNs tokens have no documented fixed TTL. Always obtain the current token from
+APNs; after a token change Apple requires an app launch before delivery resumes.
+Silent push delivery is best-effort, independently of token validity.
+
+To test: launch a Debug build, sign in, and confirm **Push destination registered**.
+Call `record_nutrition` from ChatGPT. Its `notificationStatus` reports submission
+to APNs; **Last push received** in iOS confirms actual receipt. Background the app
+without force-quitting it to test silent delivery, then reopen to inspect the saved
+receipt timestamp. There is no alert banner. Only one destination is active, so
+opening another signed-in installation may replace the phone you intended to test.
+The current server key is sandbox-only and does not support TestFlight pushes.
 
 ## Troubleshooting
 

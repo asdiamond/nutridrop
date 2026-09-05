@@ -102,6 +102,26 @@ struct ContentView: View {
                 .textSelection(.enabled)
 
             backendConnectionStatus
+            if let receivedAt = authSession.lastPushReceivedAt,
+               let recordID = authSession.lastPushRecordID {
+                VStack(spacing: 4) {
+                    Text("Last push received").font(.caption.bold())
+                    Text(receivedAt.formatted(date: .abbreviated, time: .standard))
+                    Text(recordID).font(.caption2).textSelection(.enabled)
+                    Text("Receipt only; not written to Apple Health.").font(.caption2)
+                }
+                .font(.caption)
+            } else {
+                Text("No push received yet").font(.caption).foregroundStyle(.secondary)
+            }
+            Text(authSession.pushRegistrationStatus)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Retry push registration") {
+                UIApplication.shared.registerForRemoteNotifications()
+                authSession.uploadPushToken()
+            }
 
 
             Button("Sign out", role: .destructive, action: authSession.signOut)

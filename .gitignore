@@ -13,3 +13,6 @@ node_modules/
 dist/
 coverage/
 *.cpuprofile
+
+# Apple private signing keys
+*.p8

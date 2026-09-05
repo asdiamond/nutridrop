@@ -3,6 +3,18 @@ import Foundation
 struct APIClient {
     private let baseURL = URL(string: "https://nutridrop-mcp-staging.diamondaleksandr.workers.dev")!
 
+    func updatePushToken(_ token: String, environment: String, accessToken: String, remove: Bool = false) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "v1/push-token"))
+        request.httpMethod = remove ? "DELETE" : "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["token": token, "environment": environment])
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if response.statusCode == 401 { throw APIError.unauthorized }
+        guard response.statusCode == 204 else { throw APIError.server(response.statusCode) }
+    }
+
     func session(accessToken: String) async throws -> ConnectUser {
         var request = URLRequest(url: baseURL.appending(path: "v1/session"))
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")

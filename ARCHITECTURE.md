@@ -113,7 +113,14 @@ or querying requirements justify normalized tables.
 
 ## Deferred Work
 
-- Device registration and active-writer selection.
+- Durable notification delivery and nutrition processing. Direct best-effort APNs
+  submission after each saved record is implemented, without a queue or retries.
+  The app displays receipt of the record ID; it does not yet fetch/write nutrition.
+  Push-token registration is implemented:
+  one row per user in `push_tokens`, updated through `PUT /v1/push-token`.
+  Tokens are unique per APNs environment, and registration reassigns ownership
+  when the installation signs into a different account. DELETE is conditional
+  on both the user and destination. This is not a HealthKit writer lease.
 - Normalized quantity and delivery tables.
 - Foreground and background iPhone synchronization.
 - HealthKit writing and acknowledgements.

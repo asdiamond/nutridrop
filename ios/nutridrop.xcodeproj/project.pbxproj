@@ -95,6 +95,9 @@
 				TargetAttributes = {
 					1FE57C5A3049DCC3007F7491 = {
 						CreatedOnToolsVersion = 26.2;
+						SystemCapabilities = {
+							com.apple.Push = { enabled = 1; };
+						};
 					};
 				};
 			};
@@ -267,6 +270,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = nutridrop/nutridrop.entitlements;
+				APS_ENVIRONMENT = development;
+				APNS_ENVIRONMENT = sandbox;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Z9369NJFAQ;
 				ENABLE_PREVIEWS = YES;
@@ -296,6 +302,9 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = nutridrop/nutridrop.entitlements;
+				APS_ENVIRONMENT = production;
+				APNS_ENVIRONMENT = production;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = Z9369NJFAQ;

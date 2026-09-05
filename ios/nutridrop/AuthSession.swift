@@ -12,6 +12,49 @@ final class AuthSession: NSObject {
     private let apiClient = APIClient()
     private var webAuthenticationSession: ASWebAuthenticationSession?
     private var refreshTask: Task<StoredSession, Error>?
+    private var pushToken: String?
+    private var pushUploadTask: Task<Void, Never>?
+    var pushRegistrationStatus = "Waiting for APNs registration..."
+    private(set) var lastPushRecordID: String?
+    private(set) var lastPushReceivedAt: Date?
+
+    func receivedPush(recordID: String) {
+        guard let userID = user?.userId else { return }
+        lastPushRecordID = recordID
+        lastPushReceivedAt = Date()
+        UserDefaults.standard.set([
+            "userId": userID, "recordId": recordID, "receivedAt": Date().timeIntervalSince1970,
+        ], forKey: "lastPushReceipt")
+    }
+
+    private var pushEnvironment: String {
+        Bundle.main.object(forInfoDictionaryKey: "APNSEnvironment") as? String ?? ""
+    }
+
+    func receivedPushToken(_ token: String) {
+        pushToken = token
+        uploadPushToken()
+    }
+
+    func uploadPushToken() {
+        guard let token = pushToken, let userID = user?.userId else { return }
+        pushUploadTask?.cancel()
+        pushRegistrationStatus = "Registering push destination..."
+        pushUploadTask = Task {
+            do {
+                let accessToken = try await accessToken()
+                try Task.checkCancellation()
+                guard user?.userId == userID else { return }
+                try await apiClient.updatePushToken(token, environment: pushEnvironment, accessToken: accessToken)
+                try Task.checkCancellation()
+                guard user?.userId == userID else { return }
+                pushRegistrationStatus = "Push destination registered"
+            } catch {
+                guard !Task.isCancelled, user?.userId == userID else { return }
+                pushRegistrationStatus = "Push registration failed: \(error.localizedDescription)"
+            }
+        }
+    }
 
     private(set) var user: ConnectUser?
     private(set) var isLoading = false
@@ -24,6 +67,13 @@ final class AuthSession: NSObject {
     override init() {
         super.init()
         restoreSession()
+        if let receipt = UserDefaults.standard.dictionary(forKey: "lastPushReceipt"),
+           let userID = user?.userId, receipt["userId"] as? String == userID {
+            lastPushRecordID = receipt["recordId"] as? String
+            if let timestamp = receipt["receivedAt"] as? Double {
+                lastPushReceivedAt = Date(timeIntervalSince1970: timestamp)
+            }
+        }
     }
 
     func signIn() {
@@ -62,6 +112,17 @@ final class AuthSession: NSObject {
     }
 
     func signOut() {
+        lastPushRecordID = nil
+        lastPushReceivedAt = nil
+        UserDefaults.standard.removeObject(forKey: "lastPushReceipt")
+        pushUploadTask?.cancel()
+        // Conditional removal cannot delete another phone's newer registration.
+        if let token = pushToken, let session = try? Keychain.load() {
+            let environment = pushEnvironment
+            Task {
+                try? await apiClient.updatePushToken(token, environment: environment, accessToken: session.accessToken, remove: true)
+            }
+        }
         refreshTask?.cancel()
         refreshTask = nil
         webAuthenticationSession?.cancel()
@@ -84,6 +145,8 @@ final class AuthSession: NSObject {
             guard isAuthenticated else { return }
             user = verifiedUser
             backendConnectionState = .connected
+            UIApplication.shared.registerForRemoteNotifications()
+            uploadPushToken()
         } catch AuthError.sessionExpired {
             signOut()
             errorMessage = "Your session expired. Please sign in again."
