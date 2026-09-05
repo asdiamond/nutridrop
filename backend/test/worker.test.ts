@@ -1,9 +1,10 @@
 import { env } from "cloudflare:workers";
 import { createExecutionContext } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorker } from "../src";
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
+afterEach(() => vi.restoreAllMocks());
 
 describe("MCP Worker", () => {
   it("publishes protected resource metadata", async () => {
@@ -75,7 +76,14 @@ describe("MCP Worker", () => {
     expect(response.headers.get("Allow")).toBe("GET");
   });
 
-  it("invokes record_nutrition and persists the authenticated user's record", async () => {
+  it.each([false, true])("persists nutrition even if queue publishing fails: %s", async (publishFails) => {
+    const send = vi.spyOn(env.NOTIFICATIONS, "send");
+    if (publishFails) {
+      send.mockRejectedValue(new Error("Queue unavailable"));
+      vi.spyOn(console, "error").mockImplementation(() => {});
+    } else {
+      send.mockResolvedValue({ metadata: { metrics: { backlogCount: 1, backlogBytes: 100 } } });
+    }
     await env.DB.exec("DROP TABLE IF EXISTS nutrition_records");
     await env.DB.prepare(
       `CREATE TABLE nutrition_records (
@@ -122,7 +130,7 @@ describe("MCP Worker", () => {
     const responseText = await response.text();
     const dataLine = responseText.split("\n").find((line) => line.startsWith("data: "));
     const body = JSON.parse(dataLine?.slice(6) ?? "{}") as {
-      result?: { structuredContent?: { status?: string } };
+      result?: { structuredContent?: { status?: string; recordId?: string; notificationStatus?: string } };
     };
     const stored = await env.DB.prepare(
       "SELECT workos_user_id FROM nutrition_records ORDER BY created_at DESC LIMIT 1",
@@ -131,6 +139,8 @@ describe("MCP Worker", () => {
 
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(body.result?.structuredContent?.status).toBe("accepted");
+    expect(body.result?.structuredContent?.notificationStatus).toBe(publishFails ? "enqueue_failed" : "queued");
+    expect(send).toHaveBeenCalledExactlyOnceWith({ userId: "user_authenticated", recordId: body.result?.structuredContent?.recordId });
     expect(stored?.workos_user_id).toBe("user_authenticated");
   });
 });

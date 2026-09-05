@@ -201,8 +201,8 @@ APNs; after a token change Apple requires an app launch before delivery resumes.
 Silent push delivery is best-effort, independently of token validity.
 
 To test: launch a Debug build, sign in, and confirm **Push destination registered**.
-Call `record_nutrition` from ChatGPT. Its `notificationStatus` reports submission
-to APNs; **Last push received** in iOS confirms actual receipt. **Last complete
+Call `record_nutrition` from ChatGPT. Its `notificationStatus: queued` reports
+queue publication, not APNs acceptance; **Last push received** in iOS confirms actual receipt. **Last complete
 download** and the nutrition list confirm authenticated fetching and local save. Background the app
 without force-quitting it to test silent delivery, then reopen to inspect the saved
 receipt timestamp. There is no alert banner. Only one destination is active, so

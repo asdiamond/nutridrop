@@ -19,6 +19,11 @@
     "WORKOS_ISSUER": "https://resilient-quest-95-staging.authkit.app"
   },
   "secrets": { "required": ["APNS_PRIVATE_KEY"] },
+  "queues": {
+    "producers": [{ "binding": "NOTIFICATIONS", "queue": "nutridrop-notifications-local" }],
+    "consumers": [{ "queue": "nutridrop-notifications-local", "max_batch_size": 1,
+      "max_batch_timeout": 1, "max_retries": 5, "retry_delay": 60, "max_concurrency": 1 }]
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -39,6 +44,11 @@
         "WORKOS_ISSUER": "https://resilient-quest-95-staging.authkit.app"
       },
       "secrets": { "required": ["APNS_PRIVATE_KEY"] },
+      "queues": {
+        "producers": [{ "binding": "NOTIFICATIONS", "queue": "nutridrop-notifications-staging" }],
+        "consumers": [{ "queue": "nutridrop-notifications-staging", "max_batch_size": 1,
+          "max_batch_timeout": 1, "max_retries": 5, "retry_delay": 60, "max_concurrency": 1 }]
+      },
       "d1_databases": [
         {
           "binding": "DB",

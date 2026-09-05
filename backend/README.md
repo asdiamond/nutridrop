@@ -24,11 +24,27 @@ users in one APNs environment. `DELETE` accepts the same body and removes only
 the caller's matching destination, making stale-device sign-out safe. Run the
 `0004` migration before deployment.
 
-After `record_nutrition` persists a record, it directly submits one silent push
-containing only `record_id`. `notificationStatus` reports `accepted_by_apns`,
-`not_registered`, `environment_mismatch`, or `failed`. APNs acceptance is not
-device receipt. A failed push never turns a successful database write into a
-failed tool call. There is no notification queue or application-level retry.
+After `record_nutrition` persists a record, it publishes `{ userId, recordId }`
+to `NOTIFICATIONS`. `notificationStatus` reports `queued` or `enqueue_failed`;
+neither means APNs accepted a push or the phone received it. The same Worker
+consumes the queue and sends the silent push using the user's current destination.
+The consumer logs its outcome and acknowledges accepted pushes, missing/mismatched
+destinations, unregistered tokens, and permanent request rejections. Network,
+signing, provider-auth, rate-limit, and server failures retry up to five times
+at 60-second intervals. Messages are discarded after retry exhaustion; no
+dead-letter queue is configured. Duplicate delivery can cause duplicate wake-up
+hints; iOS already merges nutrition by record ID.
+
+There is intentionally no outbox. A crash or publish failure after the D1 write
+can leave a saved record without notification work. Publish failures return
+`status: accepted` with `notificationStatus: enqueue_failed` and log the record
+ID. Do not repeat the nutrition call just to retry notification: ingestion is
+append-only. A later delivered push can recover the record through pending sync.
+APNs accepting but not delivering a push is not detectable by this queue.
+
+Staging queue: `nutridrop-notifications-staging`. Create it with
+`npx wrangler queues create nutridrop-notifications-staging` before first deploy.
+The local queue is emulated by Wrangler. No iOS update is needed for this change.
 
 APNs uses `APNS_PRIVATE_KEY` as a Worker secret, with public key ID, team ID,
 topic, and supported environment in Wrangler config. The current key is configured

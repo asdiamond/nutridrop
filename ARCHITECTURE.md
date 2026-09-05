@@ -114,8 +114,10 @@ or querying requirements justify normalized tables.
 
 ## Deferred Work
 
-- Durable notification delivery and nutrition processing. Direct best-effort APNs
-  submission after each saved record is implemented, without a queue or retries.
+- Nutrition processing. APNs submission runs in a Cloudflare Queue consumer,
+  published after each saved record. Transient failures retry five times at
+  60-second intervals. No outbox or dead-letter queue is implemented: the
+  D1-to-queue gap and retry exhaustion are intentional current limitations.
   The app fetches pending nutrition in 50-record pages after a push and persists
   records and paging progress atomically per user. GET is non-destructive;
   acknowledgements and HealthKit writing are not implemented.
@@ -127,7 +129,7 @@ or querying requirements justify normalized tables.
 - Normalized quantity and delivery tables.
 - Foreground and background iPhone synchronization.
 - HealthKit writing and acknowledgements.
-- Cloudflare Queues, APNs, retries, and reconciliation.
+- Notification reconciliation and outbox, if justified by observed failures.
 - Retention, export, deletion, and public plugin submission requirements.
 
 When delivery work begins, D1 remains the source of truth. The iPhone will pull

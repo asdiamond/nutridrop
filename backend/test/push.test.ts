@@ -15,7 +15,7 @@ async function register(environment = "sandbox") {
     .bind("user_test", "ab".repeat(32), environment, "2026-09-05T00:00:00Z").run();
 }
 
-describe("direct APNs submission", () => {
+describe("APNs submission", () => {
   it("does not send without a destination or with a mismatched key environment", async () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     expect(await notifyDevice(env, "user_test", "record")).toBe("not_registered");
@@ -53,7 +53,7 @@ describe("direct APNs submission", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ reason: "Unregistered" }, { status: 410 }));
     expect(await notifyDevice({ ...env, APNS_PRIVATE_KEY: await exportPKCS8(keys.privateKey) }, "user_test", "record"))
-      .toBe("failed");
+      .toBe("unregistered");
     expect(await env.DB.prepare("SELECT * FROM push_tokens").first()).toBeNull();
   });
 
@@ -62,4 +62,15 @@ describe("direct APNs submission", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await notifyDevice({ ...env, APNS_PRIVATE_KEY: "invalid" }, "user_test", "record")).toBe("failed");
   });
+
+  it.each([[429, "failed"], [503, "failed"], [400, "rejected"]])(
+    "classifies APNs HTTP %s as %s", async (status, expected) => {
+      await register();
+      const keys = await generateKeyPair("ES256", { extractable: true });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ reason: "Rejected" }, { status: Number(status) }));
+      expect(await notifyDevice({ ...env, APNS_PRIVATE_KEY: await exportPKCS8(keys.privateKey) }, "user_test", "record"))
+        .toBe(expected);
+    },
+  );
 });

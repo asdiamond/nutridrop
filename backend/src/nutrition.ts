@@ -58,7 +58,7 @@ export const nutritionInputSchema = z
 export const nutritionOutputSchema = z.object({
   recordId: z.string(),
   status: z.literal("accepted"),
-  notificationStatus: z.enum(["accepted_by_apns", "not_registered", "environment_mismatch", "failed"]),
+  notificationStatus: z.enum(["queued", "enqueue_failed"]),
 });
 
 export type NutritionInput = z.infer<typeof nutritionInputSchema>;

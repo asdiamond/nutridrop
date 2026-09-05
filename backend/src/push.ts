@@ -5,7 +5,7 @@ import { importPKCS8, SignJWT } from "jose";
 let credential: { privateKey: string; keyId: string; teamId: string; issuedAt: number; token: string } | undefined;
 
 export async function notifyDevice(env: Env, userId: string, recordId: string): Promise<
-  "accepted_by_apns" | "not_registered" | "environment_mismatch" | "failed"
+  "accepted_by_apns" | "not_registered" | "environment_mismatch" | "unregistered" | "rejected" | "failed"
 > {
   try {
     const destination = await env.DB.prepare(
@@ -48,7 +48,12 @@ export async function notifyDevice(env: Env, userId: string, recordId: string): 
     if (response.status === 410) {
       await env.DB.prepare("DELETE FROM push_tokens WHERE workos_user_id = ? AND token = ? AND environment = ? AND updated_at = ?")
         .bind(userId, destination.token, destination.environment, destination.updated_at).run();
+      return "unregistered";
     }
+    if ([400, 404, 405, 413].includes(response.status)) return "rejected";
+    // Retry throttling, provider-auth failures and server errors. A rejected
+    // cached provider token must be replaced before the queue's next attempt.
+    if (response.status === 403) credential = undefined;
     return "failed";
   } catch (error) {
     console.error(JSON.stringify({ message: "push submission failed", errorType: error instanceof Error ? error.name : "UnknownError" }));

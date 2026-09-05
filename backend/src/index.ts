@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import { verifyAccessToken, type TokenVerifier } from "./auth";
-import { notifyDevice } from "./push";
+import { consumeNotifications } from "./notifications";
 import {
   nutritionInputSchema,
   nutritionOutputSchema,
@@ -105,14 +105,20 @@ function createServer(env: Env, workosUserId: string): McpServer {
       try {
         const validatedInput = nutritionInputSchema.parse(input);
         const recordId = await recordNutrition(env.DB, workosUserId, validatedInput);
-        const notificationStatus = await notifyDevice(env, workosUserId, recordId);
+        let notificationStatus: "queued" | "enqueue_failed" = "queued";
+        try {
+          await env.NOTIFICATIONS.send({ userId: workosUserId, recordId });
+        } catch {
+          notificationStatus = "enqueue_failed";
+          console.error(JSON.stringify({ message: "notification enqueue failed", recordId }));
+        }
         const structuredContent = { recordId, status: "accepted" as const, notificationStatus };
         return {
           structuredContent,
           content: [
             {
               type: "text",
-              text: `Nutrition was saved. Push submission: ${notificationStatus}. This does not confirm device receipt or an Apple Health write.`,
+               text: `Nutrition was saved. Notification: ${notificationStatus}. This does not confirm APNs acceptance, device receipt, or an Apple Health write.`,
             },
           ],
         };
@@ -252,4 +258,7 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
   };
 }
 
-export default createWorker(verifyAccessToken) satisfies ExportedHandler<Env>;
+export default {
+  ...createWorker(verifyAccessToken),
+  queue: consumeNotifications,
+} satisfies ExportedHandler<Env>;
