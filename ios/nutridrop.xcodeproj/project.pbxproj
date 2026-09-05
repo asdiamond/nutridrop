@@ -96,6 +96,7 @@
 					1FE57C5A3049DCC3007F7491 = {
 						CreatedOnToolsVersion = 26.2;
 						SystemCapabilities = {
+							com.apple.HealthKit = { enabled = 1; };
 							com.apple.Push = {
 								enabled = 1;
 							};

@@ -3,6 +3,23 @@ import Foundation
 struct APIClient {
     private let baseURL = URL(string: "https://nutridrop-mcp-staging.diamondaleksandr.workers.dev")!
 
+    func acknowledgeNutrition(recordID: String, accessToken: String, timeout: TimeInterval) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "v1/nutrition/acknowledge"),
+            cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["recordIds": [recordID]])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if response.statusCode == 401 { throw APIError.unauthorized }
+        guard response.statusCode == 200 else { throw APIError.server(response.statusCode) }
+        struct Result: Decodable { let acknowledgedIds: [String] }
+        guard try JSONDecoder().decode(Result.self, from: data).acknowledgedIds.contains(recordID) else {
+            throw APIError.invalidResponse
+        }
+    }
+
     func pendingNutrition(accessToken: String, cursor: String?, timeout: TimeInterval) async throws -> NutritionPage {
         var url = URLComponents(url: baseURL.appending(path: "v1/nutrition/pending"), resolvingAgainstBaseURL: false)!
         if let cursor { url.queryItems = [URLQueryItem(name: "cursor", value: cursor)] }

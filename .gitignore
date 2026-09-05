@@ -4,6 +4,7 @@ xcuserdata/
 
 # Xcode build output
 DerivedData/
+.build/
 build/
 
 # JavaScript and Cloudflare development output

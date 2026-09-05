@@ -2,6 +2,7 @@ import AuthenticationServices
 import Observation
 import Security
 import UIKit
+import HealthKit
 
 @MainActor
 @Observable
@@ -23,14 +24,90 @@ final class AuthSession: NSObject {
     private(set) var nutritionRecords: [NutritionRecord] = []
     private(set) var nutritionSyncStatus = "Waiting for a push to download nutrition."
     private(set) var lastNutritionSyncAt: Date?
+    private let healthKit = HealthKitClient()
+    private(set) var healthStates: [String: HealthRecordState] = [:]
+    private(set) var healthAuthorizationInProgress = false
+    private(set) var healthSyncEnabled = false
+    private(set) var healthStatus = "Enable Apple Health to write your pending nutrition entries."
+
+    func enableHealthKit() async {
+        guard let userID = user?.userId, !healthAuthorizationInProgress,
+              UIApplication.shared.applicationState == .active else { return }
+        healthAuthorizationInProgress = true
+        defer { healthAuthorizationInProgress = false }
+        do {
+            try await healthKit.requestAuthorization()
+            guard user?.userId == userID else { return }
+            // Authorization completion only means the sheet finished. Each
+            // record's write permissions are checked separately before saving.
+            healthSyncEnabled = true
+            UserDefaults.standard.set(true, forKey: "healthSyncEnabled.\(userID)")
+            healthStatus = "Apple Health enabled. Checking permissions for pending entries..."
+            _ = await syncPendingNutrition()
+        } catch {
+            guard user?.userId == userID else { return }
+            healthStatus = error.localizedDescription
+        }
+    }
+
+    private func processHealthRecords(userID: String, deadline: Date) async throws -> Bool {
+        guard healthSyncEnabled else { return false }
+        let snapshot = try await nutritionStore.load(userID: userID)
+        var changed = false
+        for record in snapshot.records.reversed() {
+            try Task.checkCancellation()
+            guard user?.userId == userID else { throw CancellationError() }
+            var state = snapshot.healthStates?[record.id] ?? HealthRecordState(stage: .downloaded)
+            if state.stage == .synced { continue }
+            guard deadline.timeIntervalSinceNow > 1 else { throw URLError(.timedOut) }
+            if state.stage != .written {
+                do {
+                    try await healthKit.save(record, userID: userID)
+                    state = HealthRecordState(stage: .written, writtenAt: Date())
+                    changed = true
+                } catch HealthWriteError.permissionRequired {
+                    state = HealthRecordState(stage: .awaitingPermission, message: HealthWriteError.permissionRequired.localizedDescription)
+                } catch {
+                    state = HealthRecordState(stage: .writeFailed, message: error.localizedDescription)
+                }
+                // Persist success before attempting acknowledgement. If this
+                // save fails, stable HK sync identifiers make replay safe.
+                try await nutritionStore.setHealthState(state, recordID: record.id, userID: userID)
+                try Task.checkCancellation()
+                guard user?.userId == userID else { throw CancellationError() }
+                healthStates[record.id] = state
+            }
+            guard state.stage == .written else { continue }
+            do {
+                let token = try await accessToken()
+                try Task.checkCancellation()
+                guard user?.userId == userID else { throw CancellationError() }
+                let remaining = deadline.timeIntervalSinceNow
+                guard remaining > 0 else { throw URLError(.timedOut) }
+                try await apiClient.acknowledgeNutrition(recordID: record.id, accessToken: token, timeout: min(8, remaining))
+                state = HealthRecordState(stage: .synced, writtenAt: state.writtenAt, acknowledgedAt: Date())
+            } catch {
+                // Keep writtenAt and the written stage: next attempt only retries
+                // the acknowledgement, even if permission has since been revoked.
+                state.message = "Server confirmation pending: \(error.localizedDescription)"
+            }
+            try await nutritionStore.setHealthState(state, recordID: record.id, userID: userID)
+            try Task.checkCancellation()
+            guard user?.userId == userID else { throw CancellationError() }
+            healthStates[record.id] = state
+        }
+        return changed
+    }
 
     private func loadNutrition() {
         guard let userID = user?.userId else { return }
+        healthSyncEnabled = UserDefaults.standard.bool(forKey: "healthSyncEnabled.\(userID)")
         Task {
             do {
                 let saved = try await nutritionStore.load(userID: userID)
                 guard user?.userId == userID else { return }
                 nutritionRecords = saved.records
+                healthStates = saved.healthStates ?? [:]
                 if let timestamp = UserDefaults.standard.dictionary(forKey: "nutritionSyncTimes")?[userID] as? Double {
                     lastNutritionSyncAt = Date(timeIntervalSince1970: timestamp)
                 }
@@ -52,7 +129,7 @@ final class AuthSession: NSObject {
         let task = Task { () throws -> Bool in
             let deadline = Date().addingTimeInterval(20)
             var cursor = try await nutritionStore.load(userID: userID).nextCursor
-            var changed = false
+            var changed = try await processHealthRecords(userID: userID, deadline: deadline)
             repeat {
                 if cursor == nil { nutritionSyncRequested = false }
                 try Task.checkCancellation()
@@ -71,6 +148,13 @@ final class AuthSession: NSObject {
                 if let next = page.nextCursor, next == cursor { throw APIError.invalidResponse }
                 cursor = page.nextCursor
             } while cursor != nil || nutritionSyncRequested
+            healthStatus = healthSyncEnabled ? "Writing pending entries to Apple Health..." : "Enable Apple Health to write your pending nutrition entries."
+            let healthChanged = try await processHealthRecords(userID: userID, deadline: deadline)
+            changed = changed || healthChanged
+            if healthSyncEnabled {
+                let remaining = nutritionRecords.filter { healthStates[$0.id]?.stage != .synced }.count
+                healthStatus = remaining == 0 ? "All downloaded entries are synced to Apple Health." : "\(remaining) entries still need permission, a write retry, or server confirmation."
+            }
             return changed
         }
         nutritionSyncTask = task
@@ -83,11 +167,12 @@ final class AuthSession: NSObject {
             var times = UserDefaults.standard.dictionary(forKey: "nutritionSyncTimes") ?? [:]
             times[userID] = completedAt.timeIntervalSince1970
             UserDefaults.standard.set(times, forKey: "nutritionSyncTimes")
-            nutritionSyncStatus = "Nutrition saved locally. Not yet written to Apple Health."
+            nutritionSyncStatus = "Pending nutrition checked and saved locally."
             return changed ? .newData : .noData
         } catch {
             guard user?.userId == userID else { return .failed }
-            nutritionSyncStatus = "Download incomplete: \(error.localizedDescription) Saved batches are kept; the next push will retry."
+            nutritionSyncStatus = "Sync incomplete: \(error.localizedDescription) Progress is saved; retry or wait for the next push."
+            healthStatus = "Unfinished entries remain pending."
             return .failed
         }
     }
@@ -189,6 +274,9 @@ final class AuthSession: NSObject {
     func signOut() {
         nutritionSyncTask?.cancel()
         nutritionRecords = []
+        healthStates = [:]
+        healthSyncEnabled = false
+        healthStatus = "Enable Apple Health to write your pending nutrition entries."
         lastNutritionSyncAt = nil
         nutritionSyncStatus = "Waiting for a push to download nutrition."
         lastPushRecordID = nil

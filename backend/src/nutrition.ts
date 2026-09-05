@@ -64,16 +64,28 @@ export const nutritionOutputSchema = z.object({
 export type NutritionInput = z.infer<typeof nutritionInputSchema>;
 
 export const nutritionCursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
+export const nutritionAcknowledgementSchema = z.object({
+  recordIds: z.array(z.uuid()).min(1).max(50),
+}).strict();
+
+export async function acknowledgeNutrition(db: D1Database, userId: string, recordIds: string[]) {
+  const ids = [...new Set(recordIds)];
+  const { results } = await db.prepare(`UPDATE nutrition_records
+    SET healthkit_acknowledged_at = COALESCE(healthkit_acknowledged_at, ?)
+    WHERE workos_user_id = ? AND id IN (${ids.map(() => "?").join(",")}) RETURNING id`)
+    .bind(new Date().toISOString(), userId, ...ids).all<{ id: string }>();
+  return { acknowledgedIds: results.map(row => row.id) };
+}
 
 export async function pendingNutrition(db: D1Database, userId: string, after?: [string, string]) {
   const { results } = await db.prepare(`SELECT id, consumed_at, meal_label,
     nutrition_data, schema_version, created_at FROM nutrition_records
-    WHERE workos_user_id = ? AND (created_at, id) > (?, ?)
+    WHERE workos_user_id = ? AND healthkit_acknowledged_at IS NULL AND (created_at, id) > (?, ?)
     ORDER BY created_at, id LIMIT 51`)
     .bind(userId, after?.[0] ?? "", after?.[1] ?? "")
     .all<{ id: string; consumed_at: string; meal_label: string | null;
       nutrition_data: string; schema_version: number; created_at: string }>();
-  // Nothing is acknowledged yet; fetching never consumes a record.
+  // Fetching never consumes a record; only the acknowledgement endpoint does.
   const records = results.slice(0, 50).map(row => ({
     id: row.id, consumedAt: row.consumed_at, mealLabel: row.meal_label,
     quantities: JSON.parse(row.nutrition_data) as NutritionInput["quantities"],

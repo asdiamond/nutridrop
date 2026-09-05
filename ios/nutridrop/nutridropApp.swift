@@ -18,6 +18,9 @@ struct nutridropApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         UIApplication.shared.registerForRemoteNotifications()
+                        if appDelegate.authSession.healthSyncEnabled {
+                            Task { _ = await appDelegate.authSession.syncPendingNutrition() }
+                        }
                     }
                 }
         }

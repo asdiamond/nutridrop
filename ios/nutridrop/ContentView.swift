@@ -69,6 +69,9 @@ struct ContentView: View {
         .task(id: authSession.isAuthenticated) {
             if authSession.isAuthenticated {
                 await authSession.verifyBackendSession()
+                if authSession.healthSyncEnabled {
+                    _ = await authSession.syncPendingNutrition()
+                }
             }
         }
     }
@@ -96,6 +99,16 @@ struct ContentView: View {
     private var nutritionList: some View {
         LazyVStack(alignment: .leading, spacing: 16) {
             Text("Downloaded nutrition").font(.title2.bold())
+            Text(authSession.healthStatus).font(.subheadline)
+            Text("Enabling Apple Health writes all pending entries and future nutrition from this account. Existing Health data is not read or deleted.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button(authSession.healthSyncEnabled ? "Review Health permissions" : "Enable Apple Health") {
+                Task { await authSession.enableHealthKit() }
+            }
+            .disabled(authSession.healthAuthorizationInProgress)
+            Button("Sync now") {
+                Task { _ = await authSession.syncPendingNutrition() }
+            }
             Text(authSession.nutritionSyncStatus).font(.caption).foregroundStyle(.secondary)
             if let date = authSession.lastNutritionSyncAt {
                 Text("Last complete download: \(date.formatted(date: .abbreviated, time: .standard))")
@@ -109,6 +122,13 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(record.mealLabel ?? "Nutrition entry").font(.headline)
                     Text(record.consumptionDescription).font(.subheadline).foregroundStyle(.secondary)
+                    let state = authSession.healthStates[record.id] ?? HealthRecordState(stage: .downloaded)
+                    Text(state.label)
+                        .font(.caption.bold())
+                        .foregroundStyle(state.stage == .synced ? Color.green : Color.secondary)
+                    if let message = state.message {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                    }
                     ForEach(Array(record.quantities.enumerated()), id: \.offset) { _, quantity in
                         HStack {
                             Text(quantity.nutrient.replacingOccurrences(of: "_", with: " ").capitalized)
@@ -143,7 +163,7 @@ struct ContentView: View {
                     Text("Last push received").font(.caption.bold())
                     Text(receivedAt.formatted(date: .abbreviated, time: .standard))
                     Text(recordID).font(.caption2).textSelection(.enabled)
-                    Text("Receipt only; not written to Apple Health.").font(.caption2)
+                    Text("Push receipt; Health sync status is shown per entry below.").font(.caption2)
                 }
                 .font(.caption)
             } else {

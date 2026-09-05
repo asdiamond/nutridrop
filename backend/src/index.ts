@@ -9,6 +9,8 @@ import {
   recordNutrition,
   pendingNutrition,
   nutritionCursorSchema,
+  nutritionAcknowledgementSchema,
+  acknowledgeNutrition,
 } from "./nutrition";
 
 const MAX_MCP_BODY_BYTES = 64 * 1024;
@@ -156,7 +158,7 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
         return protectedResourceMetadata(env);
       }
 
-      if (!["/mcp", "/v1/session", "/v1/push-token", "/v1/nutrition/pending"].includes(url.pathname)) {
+      if (!["/mcp", "/v1/session", "/v1/push-token", "/v1/nutrition/pending", "/v1/nutrition/acknowledge"].includes(url.pathname)) {
         return Response.json({ error: "not_found" }, { status: 404 });
       }
 
@@ -166,6 +168,10 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
 
       if (url.pathname === "/v1/push-token" && !["PUT", "DELETE"].includes(request.method)) {
         return new Response(null, { status: 405, headers: { Allow: "PUT, DELETE" } });
+      }
+
+      if (url.pathname === "/v1/nutrition/acknowledge" && request.method !== "POST") {
+        return new Response(null, { status: 405, headers: { Allow: "POST" } });
       }
 
       const user = await verifyToken(request, env);
@@ -196,6 +202,26 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
           return Response.json(await pendingNutrition(env.DB, user.userId, after), { headers });
         } catch {
           console.error(JSON.stringify({ message: "pending nutrition query failed" }));
+          return Response.json({ error: "storage_failed" }, { status: 500, headers });
+        }
+      }
+
+      if (url.pathname === "/v1/nutrition/acknowledge") {
+        const headers = { "Cache-Control": "no-store" };
+        if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+          return Response.json({ error: "unsupported_media_type" }, { status: 415, headers });
+        }
+        let input: z.infer<typeof nutritionAcknowledgementSchema>;
+        try {
+          input = nutritionAcknowledgementSchema.parse(await parseJsonBody(request, 4096));
+        } catch (error) {
+          return Response.json({ error: error instanceof RangeError ? "request_too_large" : "invalid_request" },
+            { status: error instanceof RangeError ? 413 : 400, headers });
+        }
+        try {
+          return Response.json(await acknowledgeNutrition(env.DB, user.userId, input.recordIds), { headers });
+        } catch {
+          console.error(JSON.stringify({ message: "nutrition acknowledgement failed" }));
           return Response.json({ error: "storage_failed" }, { status: 500, headers });
         }
       }

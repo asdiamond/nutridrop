@@ -18,6 +18,7 @@ ios/
     ├── APIClient.swift
      ├── AuthSession.swift
      ├── ConnectClient.swift
+     ├── HealthKitClient.swift
      ├── NutritionStore.swift
     ├── ContentView.swift
     ├── Info.plist
@@ -164,10 +165,12 @@ Push Notifications is enabled in Xcode. Debug signs with the development APNs
 entitlement and uploads `sandbox`; Release signs with production and uploads
 `production`. Enable Push Notifications for `app.nutridrop` in the Apple developer
 portal and regenerate the manual `dist-2` distribution profile before TestFlight.
+HealthKit is also enabled, with `NSHealthUpdateUsageDescription` for write access.
 Remote Notifications background mode is enabled. Each valid push records its
 receipt time and triggers an authenticated fetch of every pending nutrition page,
 not just the pushed ID. The callback finishes only after fetching and saving
-completes or fails. No automatic foreground fetch is used to mask missed pushes.
+completes or fails. Once Health sync is enabled, foreground entry also retries
+unfinished work. The receipt timestamp remains separate from Health sync status.
 
 `NutritionStore` merges by record ID into a per-user JSON file in Application
 Support, atomically saving each page and its next cursor. Files use protection
@@ -177,12 +180,48 @@ downloads clear the cursor; subsequent pushes reconcile the full pending set.
 Sign-out clears the visible list; retained files are loaded only for their own
 account. Corrupt files cause a visible error rather than silently discarding data.
 
-Downloads have a 20-second paging budget and short network timeouts to leave
+Sync has a 20-second work budget and short network timeouts to leave
 room for background completion. Concurrent pushes share a sync and request
 another pass when needed. The UI shows locally saved meal labels, consumption
 times in the device's timezone, quantities, and last complete download time.
-Opening the app reads local files; it does not acknowledge server records.
-HealthKit writes and server acknowledgements are not implemented yet.
+The UI distinguishes downloaded, awaiting permission, write failed, written but
+awaiting server confirmation, and synced. Only a successful HealthKit write is
+acknowledged to the server. Acknowledgements are idempotent and retried separately.
+
+### Apple Health Writes
+
+Tap **Enable Apple Health** while the app is open. This enables writes for all
+existing pending records and future records in that WorkOS account, including
+any test meals already saved. It requests only sharing/write permissions for
+the 11 supported dietary types, not permission to read existing Health data.
+Completing the permission sheet does not imply that permission was granted;
+each record is checked for all required write permissions before saving.
+Change previously denied permissions in the Health app's access settings.
+
+Each record is saved as one array of quantity samples with its consumption time.
+HealthKit documents this array save as atomic. Samples have stable sync identifiers
+derived from the WorkOS user, record ID and nutrient, with sync version 1. Retrying
+after a crash uses the same identifiers, not new logical samples. Records are
+append-only, so the app does not increment the sync version or delete Health data.
+
+The local journal persists `written` before contacting the acknowledgement API.
+If acknowledgement fails, the next attempt skips HealthKit and retries only the
+acknowledgement. If saving the journal itself fails after HealthKit succeeds, the
+same sample sync identifiers protect a subsequent write retry. Only confirmed
+acknowledgements become `synced`. Existing download files without a journal are
+retained and treated as downloaded, not already written.
+
+Apple documents that writes can be accepted while locked and cached until unlock;
+reads may be unavailable. This implementation does not query HealthKit to check
+duplicates. Errors leave records pending; push, **Sync now**, or foreground entry
+can retry. Test actual permission denial, locked-phone writes, and duplicate
+retries on a physical device before production use. A user deleting a sample in
+Health after acknowledgement is not automatically undone by Nutridrop.
+
+Core tests (sample mapping, metadata and durable local state; no Health database
+access) run with `swift test` from `ios/`. Backend tests cover acknowledgements,
+user isolation and pending-record filtering. A public privacy policy and a
+HealthKit-enabled distribution profile are still required before release.
 
 The app registers with APNs on launch/foreground and after authenticated backend
 verification. APNs callbacks upload the current token through authenticated

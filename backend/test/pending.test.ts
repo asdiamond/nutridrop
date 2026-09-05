@@ -9,7 +9,7 @@ beforeEach(async () => {
   await env.DB.prepare(`CREATE TABLE nutrition_records (
     id TEXT PRIMARY KEY, workos_user_id TEXT NOT NULL, ingestion_id TEXT NOT NULL,
     consumed_at TEXT NOT NULL, meal_label TEXT, nutrition_data TEXT NOT NULL,
-    schema_version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+    schema_version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, healthkit_acknowledged_at TEXT
   ) STRICT`).run();
 });
 
@@ -53,8 +53,8 @@ describe("pending nutrition", () => {
     const ids = Array.from({ length: 103 }, () => crypto.randomUUID()).sort();
     const timestamp = "2026-09-04T20:00:00.000Z";
     await env.DB.batch(ids.map(id => env.DB.prepare(`INSERT INTO nutrition_records
-      VALUES (?, 'user_one', ?, ?, NULL, '[]', 1, ?)`).bind(id, id, timestamp, timestamp)));
-    await env.DB.prepare(`INSERT INTO nutrition_records VALUES (?, 'user_two', ?, ?, NULL, '[]', 1, ?)`)
+      VALUES (?, 'user_one', ?, ?, NULL, '[]', 1, ?, NULL)`).bind(id, id, timestamp, timestamp)));
+    await env.DB.prepare(`INSERT INTO nutrition_records VALUES (?, 'user_two', ?, ?, NULL, '[]', 1, ?, NULL)`)
       .bind(crypto.randomUUID(), crypto.randomUUID(), timestamp, timestamp).run();
     const first = await (await get("user_one")).json<Page>();
     expect(first.records).toHaveLength(50);

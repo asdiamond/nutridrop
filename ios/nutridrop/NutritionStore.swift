@@ -13,7 +13,7 @@ nonisolated struct NutritionRecord: Codable, Identifiable, Equatable, Sendable {
     let schemaVersion: Int
     let createdAt: String
 
-    var consumptionDescription: String {
+    var consumptionDate: Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var date = formatter.date(from: consumedAt)
@@ -21,7 +21,31 @@ nonisolated struct NutritionRecord: Codable, Identifiable, Equatable, Sendable {
             formatter.formatOptions = [.withInternetDateTime]
             date = formatter.date(from: consumedAt)
         }
-        return date?.formatted(date: .abbreviated, time: .shortened) ?? consumedAt
+        return date
+    }
+
+    var consumptionDescription: String {
+        consumptionDate?.formatted(date: .abbreviated, time: .shortened) ?? consumedAt
+    }
+}
+
+nonisolated struct HealthRecordState: Codable, Equatable, Sendable {
+    enum Stage: String, Codable, Sendable {
+        case downloaded, awaitingPermission, writeFailed, written, synced
+    }
+    let stage: Stage
+    var message: String?
+    var writtenAt: Date?
+    var acknowledgedAt: Date?
+
+    var label: String {
+        switch stage {
+        case .downloaded: "Downloaded"
+        case .awaitingPermission: "Awaiting Health permission"
+        case .writeFailed: "Health write failed"
+        case .written: "Saved to Health; awaiting server confirmation"
+        case .synced: "Synced to Apple Health"
+        }
     }
 }
 
@@ -31,12 +55,19 @@ nonisolated struct NutritionPage: Decodable, Sendable {
 }
 
 actor NutritionStore {
+    private let directory: URL?
+
+    init(directory: URL? = nil) {
+        self.directory = directory
+    }
     nonisolated struct Snapshot: Codable, Sendable {
         let records: [NutritionRecord]
         let nextCursor: String?
+        // Optional because downloaded snapshots already exist on devices.
+        var healthStates: [String: HealthRecordState]? = nil
     }
     private func file(for userID: String) throws -> URL {
-        let directory = try FileManager.default.url(for: .applicationSupportDirectory,
+        let directory = try directory ?? FileManager.default.url(for: .applicationSupportDirectory,
             in: .userDomainMask, appropriateFor: nil, create: true).appending(path: "Nutrition")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
             attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
@@ -65,9 +96,21 @@ actor NutritionStore {
         if changed || existing.nextCursor != page.nextCursor {
             // Save progress with the records so an interrupted backlog resumes
             // after its last durable batch instead of repeatedly starting over.
-            try JSONEncoder().encode(Snapshot(records: sorted, nextCursor: page.nextCursor)).write(to: file(for: userID),
+            try JSONEncoder().encode(Snapshot(records: sorted, nextCursor: page.nextCursor, healthStates: existing.healthStates)).write(to: file(for: userID),
                 options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
         return (sorted, changed)
+    }
+
+    func setHealthState(_ state: HealthRecordState, recordID: String, userID: String) throws {
+        var snapshot = try load(userID: userID)
+        guard snapshot.records.contains(where: { $0.id == recordID }) else {
+            throw HealthWriteError.invalidRecord
+        }
+        if snapshot.healthStates?[recordID] == state { return }
+        if snapshot.healthStates == nil { snapshot.healthStates = [:] }
+        snapshot.healthStates?[recordID] = state
+        try JSONEncoder().encode(snapshot).write(to: file(for: userID),
+            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 }

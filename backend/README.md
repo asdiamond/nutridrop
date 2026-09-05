@@ -14,8 +14,17 @@ records per page. Pass `nextCursor` as the URL-encoded `cursor` query parameter
 until it is null. Records contain `id`, `consumedAt`, `mealLabel`, `quantities`,
 `schemaVersion`, and `createdAt`; ordering is by `(created_at, id)`. Every query
 is scoped to the verified user, including requests with a supplied cursor.
-Responses are non-cacheable. All records remain pending until HealthKit
-acknowledgements are implemented; GET never consumes or deletes records.
+Responses are non-cacheable and include only records without a HealthKit
+acknowledgement; GET never consumes or deletes records.
+
+`POST /v1/nutrition/acknowledge` accepts `{ "recordIds": ["<uuid>"] }` (1-50 IDs)
+after the client successfully saves all samples in each record to HealthKit.
+It returns `{ "acknowledgedIds": [...] }`, containing only existing records owned
+by the verified user. Unknown/other-user IDs are omitted without disclosure.
+Repeating an acknowledgement succeeds and preserves its original server timestamp.
+Records remain in D1 with `healthkit_acknowledged_at`; they leave pending pages.
+Apply migration `0006` before deploying. The server trusts the authenticated
+client's acknowledgement; it does not independently inspect Apple Health.
 
 `PUT /v1/push-token` accepts `{ "token": "<hex>", "environment": "sandbox" }`
 (or `production`) and returns 204. It stores one destination per authenticated
