@@ -9,6 +9,14 @@ a public Connect client with PKCE; MCP clients discover the authorization server
 through `/.well-known/oauth-protected-resource`. AuthKit session tokens are not
 accepted. Tokens and nutrition values must never be logged.
 
+`GET /v1/nutrition/pending` returns `{ records, nextCursor }`, with at most 50
+records per page. Pass `nextCursor` as the URL-encoded `cursor` query parameter
+until it is null. Records contain `id`, `consumedAt`, `mealLabel`, `quantities`,
+`schemaVersion`, and `createdAt`; ordering is by `(created_at, id)`. Every query
+is scoped to the verified user, including requests with a supplied cursor.
+Responses are non-cacheable. All records remain pending until HealthKit
+acknowledgements are implemented; GET never consumes or deletes records.
+
 `PUT /v1/push-token` accepts `{ "token": "<hex>", "environment": "sandbox" }`
 (or `production`) and returns 204. It stores one destination per authenticated
 user; a later registration replaces it. The same token cannot belong to two

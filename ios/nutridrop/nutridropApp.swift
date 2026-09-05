@@ -50,6 +50,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return
         }
         authSession.receivedPush(recordID: recordID)
-        completionHandler(.newData)
+        Task {
+            let result = await authSession.syncPendingNutrition()
+            completionHandler(result)
+        }
     }
 }

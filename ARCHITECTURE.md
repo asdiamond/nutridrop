@@ -3,8 +3,8 @@
 ## Scope
 
 The backend accepts explicit nutrition quantities from ChatGPT and stores them
-durably. The iOS app can authenticate to the same Worker; nutrition delivery
-and Apple Health synchronization are later milestones.
+durably. A silent push triggers iOS to fetch pending records from the same Worker
+and save them locally for display. Apple Health synchronization is a later milestone.
 
 The product is append-only. It does not infer nutrition values, edit existing
 records, delete HealthKit samples, or provide a browser dashboard.
@@ -33,6 +33,7 @@ The same Worker also exposes the first authenticated iOS API route:
 
 ```text
 GET /v1/session
+GET /v1/nutrition/pending
 ```
 
 There is no separate REST API Worker.
@@ -115,7 +116,9 @@ or querying requirements justify normalized tables.
 
 - Durable notification delivery and nutrition processing. Direct best-effort APNs
   submission after each saved record is implemented, without a queue or retries.
-  The app displays receipt of the record ID; it does not yet fetch/write nutrition.
+  The app fetches pending nutrition in 50-record pages after a push and persists
+  records and paging progress atomically per user. GET is non-destructive;
+  acknowledgements and HealthKit writing are not implemented.
   Push-token registration is implemented:
   one row per user in `push_tokens`, updated through `PUT /v1/push-token`.
   Tokens are unique per APNs environment, and registration reassigns ownership

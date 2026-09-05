@@ -17,6 +17,80 @@ final class AuthSession: NSObject {
     var pushRegistrationStatus = "Waiting for APNs registration..."
     private(set) var lastPushRecordID: String?
     private(set) var lastPushReceivedAt: Date?
+    private let nutritionStore = NutritionStore()
+    private var nutritionSyncTask: Task<Bool, Error>?
+    private var nutritionSyncRequested = false
+    private(set) var nutritionRecords: [NutritionRecord] = []
+    private(set) var nutritionSyncStatus = "Waiting for a push to download nutrition."
+    private(set) var lastNutritionSyncAt: Date?
+
+    private func loadNutrition() {
+        guard let userID = user?.userId else { return }
+        Task {
+            do {
+                let saved = try await nutritionStore.load(userID: userID)
+                guard user?.userId == userID else { return }
+                nutritionRecords = saved.records
+                if let timestamp = UserDefaults.standard.dictionary(forKey: "nutritionSyncTimes")?[userID] as? Double {
+                    lastNutritionSyncAt = Date(timeIntervalSince1970: timestamp)
+                }
+            } catch {
+                guard user?.userId == userID else { return }
+                nutritionSyncStatus = "Could not read saved nutrition: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func syncPendingNutrition() async -> UIBackgroundFetchResult {
+        guard let userID = user?.userId else { return .noData }
+        if let task = nutritionSyncTask {
+            nutritionSyncRequested = true
+            do { return try await task.value ? .newData : .noData }
+            catch { return .failed }
+        }
+        nutritionSyncStatus = "Downloading pending nutrition..."
+        let task = Task { () throws -> Bool in
+            let deadline = Date().addingTimeInterval(20)
+            var cursor = try await nutritionStore.load(userID: userID).nextCursor
+            var changed = false
+            repeat {
+                if cursor == nil { nutritionSyncRequested = false }
+                try Task.checkCancellation()
+                guard user?.userId == userID else { throw CancellationError() }
+                let token = try await accessToken()
+                let remaining = deadline.timeIntervalSinceNow
+                guard remaining > 0 else { throw URLError(.timedOut) }
+                let page = try await apiClient.pendingNutrition(accessToken: token, cursor: cursor, timeout: min(10, remaining))
+                try Task.checkCancellation()
+                guard user?.userId == userID else { throw CancellationError() }
+                let saved = try await nutritionStore.merge(page, userID: userID)
+                try Task.checkCancellation()
+                guard user?.userId == userID else { throw CancellationError() }
+                nutritionRecords = saved.records
+                changed = changed || saved.changed
+                if let next = page.nextCursor, next == cursor { throw APIError.invalidResponse }
+                cursor = page.nextCursor
+            } while cursor != nil || nutritionSyncRequested
+            return changed
+        }
+        nutritionSyncTask = task
+        defer { nutritionSyncTask = nil }
+        do {
+            let changed = try await task.value
+            guard user?.userId == userID else { return .failed }
+            let completedAt = Date()
+            lastNutritionSyncAt = completedAt
+            var times = UserDefaults.standard.dictionary(forKey: "nutritionSyncTimes") ?? [:]
+            times[userID] = completedAt.timeIntervalSince1970
+            UserDefaults.standard.set(times, forKey: "nutritionSyncTimes")
+            nutritionSyncStatus = "Nutrition saved locally. Not yet written to Apple Health."
+            return changed ? .newData : .noData
+        } catch {
+            guard user?.userId == userID else { return .failed }
+            nutritionSyncStatus = "Download incomplete: \(error.localizedDescription) Saved batches are kept; the next push will retry."
+            return .failed
+        }
+    }
 
     func receivedPush(recordID: String) {
         guard let userID = user?.userId else { return }
@@ -67,6 +141,7 @@ final class AuthSession: NSObject {
     override init() {
         super.init()
         restoreSession()
+        loadNutrition()
         if let receipt = UserDefaults.standard.dictionary(forKey: "lastPushReceipt"),
            let userID = user?.userId, receipt["userId"] as? String == userID {
             lastPushRecordID = receipt["recordId"] as? String
@@ -112,6 +187,10 @@ final class AuthSession: NSObject {
     }
 
     func signOut() {
+        nutritionSyncTask?.cancel()
+        nutritionRecords = []
+        lastNutritionSyncAt = nil
+        nutritionSyncStatus = "Waiting for a push to download nutrition."
         lastPushRecordID = nil
         lastPushReceivedAt = nil
         UserDefaults.standard.removeObject(forKey: "lastPushReceipt")
@@ -210,6 +289,7 @@ final class AuthSession: NSObject {
             )
             try Keychain.save(storedSession)
             user = authenticatedUser
+            loadNutrition()
         } catch {
             errorMessage = error.localizedDescription
         }

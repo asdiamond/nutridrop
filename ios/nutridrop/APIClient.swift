@@ -3,6 +3,23 @@ import Foundation
 struct APIClient {
     private let baseURL = URL(string: "https://nutridrop-mcp-staging.diamondaleksandr.workers.dev")!
 
+    func pendingNutrition(accessToken: String, cursor: String?, timeout: TimeInterval) async throws -> NutritionPage {
+        var url = URLComponents(url: baseURL.appending(path: "v1/nutrition/pending"), resolvingAgainstBaseURL: false)!
+        if let cursor { url.queryItems = [URLQueryItem(name: "cursor", value: cursor)] }
+        var request = URLRequest(url: url.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if response.statusCode == 401 { throw APIError.unauthorized }
+        guard response.statusCode == 200 else { throw APIError.server(response.statusCode) }
+        let page = try JSONDecoder().decode(NutritionPage.self, from: data)
+        guard page.records.count <= 50, page.records.allSatisfy({ $0.schemaVersion == 1 }) else {
+            throw APIError.invalidResponse
+        }
+        return page
+    }
+
     func updatePushToken(_ token: String, environment: String, accessToken: String, remove: Bool = false) async throws {
         var request = URLRequest(url: baseURL.appending(path: "v1/push-token"))
         request.httpMethod = remove ? "DELETE" : "PUT"

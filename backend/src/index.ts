@@ -7,6 +7,8 @@ import {
   nutritionInputSchema,
   nutritionOutputSchema,
   recordNutrition,
+  pendingNutrition,
+  nutritionCursorSchema,
 } from "./nutrition";
 
 const MAX_MCP_BODY_BYTES = 64 * 1024;
@@ -148,11 +150,11 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
         return protectedResourceMetadata(env);
       }
 
-      if (!["/mcp", "/v1/session", "/v1/push-token"].includes(url.pathname)) {
+      if (!["/mcp", "/v1/session", "/v1/push-token", "/v1/nutrition/pending"].includes(url.pathname)) {
         return Response.json({ error: "not_found" }, { status: 404 });
       }
 
-      if (url.pathname === "/v1/session" && request.method !== "GET") {
+      if (["/v1/session", "/v1/nutrition/pending"].includes(url.pathname) && request.method !== "GET") {
         return new Response(null, { status: 405, headers: { Allow: "GET" } });
       }
 
@@ -170,6 +172,26 @@ export function createWorker(verifyToken: TokenVerifier): NutridropWorker {
           { userId: user.userId },
           { headers: { "Cache-Control": "no-store" } },
         );
+      }
+
+      if (url.pathname === "/v1/nutrition/pending") {
+        const headers = { "Cache-Control": "no-store" };
+        let after: [string, string] | undefined;
+        const cursor = url.searchParams.get("cursor");
+        try {
+          if (cursor !== null) {
+            if (cursor.length > 256) throw new Error("Invalid cursor");
+            after = nutritionCursorSchema.parse(JSON.parse(atob(cursor)));
+          }
+        } catch {
+          return Response.json({ error: "invalid_cursor" }, { status: 400, headers });
+        }
+        try {
+          return Response.json(await pendingNutrition(env.DB, user.userId, after), { headers });
+        } catch {
+          console.error(JSON.stringify({ message: "pending nutrition query failed" }));
+          return Response.json({ error: "storage_failed" }, { status: 500, headers });
+        }
       }
 
       if (url.pathname === "/v1/push-token") {

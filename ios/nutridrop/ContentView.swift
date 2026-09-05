@@ -23,6 +23,7 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
 
+            ScrollView {
             VStack(spacing: 28) {
                 Spacer()
 
@@ -41,6 +42,7 @@ struct ContentView: View {
 
                 if let user = authSession.user {
                     signedInCard(userID: user.userId)
+                    nutritionList
                 } else {
                     signInCard
                 }
@@ -51,6 +53,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(24)
+            }
         }
         .alert(
             "Authentication Error",
@@ -88,6 +91,38 @@ struct ContentView: View {
         .foregroundStyle(.white)
         .background(Color(red: 0.10, green: 0.38, blue: 0.23), in: .rect(cornerRadius: 14))
         .disabled(authSession.isLoading)
+    }
+
+    private var nutritionList: some View {
+        LazyVStack(alignment: .leading, spacing: 16) {
+            Text("Downloaded nutrition").font(.title2.bold())
+            Text(authSession.nutritionSyncStatus).font(.caption).foregroundStyle(.secondary)
+            if let date = authSession.lastNutritionSyncAt {
+                Text("Last complete download: \(date.formatted(date: .abbreviated, time: .standard))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if authSession.nutritionRecords.isEmpty {
+                Text("No nutrition downloaded yet. Record a meal through ChatGPT to trigger a push.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(authSession.nutritionRecords) { record in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(record.mealLabel ?? "Nutrition entry").font(.headline)
+                    Text(record.consumptionDescription).font(.subheadline).foregroundStyle(.secondary)
+                    ForEach(Array(record.quantities.enumerated()), id: \.offset) { _, quantity in
+                        HStack {
+                            Text(quantity.nutrient.replacingOccurrences(of: "_", with: " ").capitalized)
+                            Spacer()
+                            Text("\(quantity.value.formatted()) \(quantity.unit)").monospacedDigit()
+                        }
+                    }
+                    Text(record.id).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: .rect(cornerRadius: 18))
+            }
+        }
     }
 
     private func signedInCard(userID: String) -> some View {

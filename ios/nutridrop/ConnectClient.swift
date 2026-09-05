@@ -52,6 +52,7 @@ struct ConnectClient {
             "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: allowed)!)"
         }.joined(separator: "&")
         var request = URLRequest(url: URL(string: "\(Self.issuer)/oauth2/token")!)
+        request.timeoutInterval = 10
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(body.utf8)

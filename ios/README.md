@@ -18,6 +18,7 @@ ios/
     ├── APIClient.swift
      ├── AuthSession.swift
      ├── ConnectClient.swift
+     ├── NutritionStore.swift
     ├── ContentView.swift
     ├── Info.plist
     └── nutridropApp.swift
@@ -163,10 +164,25 @@ Push Notifications is enabled in Xcode. Debug signs with the development APNs
 entitlement and uploads `sandbox`; Release signs with production and uploads
 `production`. Enable Push Notifications for `app.nutridrop` in the Apple developer
 portal and regenerate the manual `dist-2` distribution profile before TestFlight.
-Remote Notifications background mode is enabled. The notification callback
-stores only the last received record ID and receipt time, scoped to the signed-in
-user, and displays them in the app. HealthKit writes and record fetching are not
-implemented yet.
+Remote Notifications background mode is enabled. Each valid push records its
+receipt time and triggers an authenticated fetch of every pending nutrition page,
+not just the pushed ID. The callback finishes only after fetching and saving
+completes or fails. No automatic foreground fetch is used to mask missed pushes.
+
+`NutritionStore` merges by record ID into a per-user JSON file in Application
+Support, atomically saving each page and its next cursor. Files use protection
+that permits background access after the first device unlock. Interrupted
+downloads retain their saved batches and cursor for the next push. Completed
+downloads clear the cursor; subsequent pushes reconcile the full pending set.
+Sign-out clears the visible list; retained files are loaded only for their own
+account. Corrupt files cause a visible error rather than silently discarding data.
+
+Downloads have a 20-second paging budget and short network timeouts to leave
+room for background completion. Concurrent pushes share a sync and request
+another pass when needed. The UI shows locally saved meal labels, consumption
+times in the device's timezone, quantities, and last complete download time.
+Opening the app reads local files; it does not acknowledge server records.
+HealthKit writes and server acknowledgements are not implemented yet.
 
 The app registers with APNs on launch/foreground and after authenticated backend
 verification. APNs callbacks upload the current token through authenticated
@@ -186,7 +202,8 @@ Silent push delivery is best-effort, independently of token validity.
 
 To test: launch a Debug build, sign in, and confirm **Push destination registered**.
 Call `record_nutrition` from ChatGPT. Its `notificationStatus` reports submission
-to APNs; **Last push received** in iOS confirms actual receipt. Background the app
+to APNs; **Last push received** in iOS confirms actual receipt. **Last complete
+download** and the nutrition list confirm authenticated fetching and local save. Background the app
 without force-quitting it to test silent delivery, then reopen to inspect the saved
 receipt timestamp. There is no alert banner. Only one destination is active, so
 opening another signed-in installation may replace the phone you intended to test.

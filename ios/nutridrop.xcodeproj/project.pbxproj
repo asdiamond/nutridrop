@@ -96,7 +96,9 @@
 					1FE57C5A3049DCC3007F7491 = {
 						CreatedOnToolsVersion = 26.2;
 						SystemCapabilities = {
-							com.apple.Push = { enabled = 1; };
+							com.apple.Push = {
+								enabled = 1;
+							};
 						};
 					};
 				};
@@ -267,12 +269,12 @@
 		1FE57C673049DCC4007F7491 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APNS_ENVIRONMENT = sandbox;
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = nutridrop/nutridrop.entitlements;
-				APS_ENVIRONMENT = development;
-				APNS_ENVIRONMENT = sandbox;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Z9369NJFAQ;
 				ENABLE_PREVIEWS = YES;
@@ -298,13 +300,13 @@
 		1FE57C683049DCC4007F7491 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APNS_ENVIRONMENT = production;
+				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = nutridrop/nutridrop.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CODE_SIGN_ENTITLEMENTS = nutridrop/nutridrop.entitlements;
-				APS_ENVIRONMENT = production;
-				APNS_ENVIRONMENT = production;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = Z9369NJFAQ;
@@ -352,7 +354,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = 1FE57C533049DCC3007F7491 /* Project object */;
 }
